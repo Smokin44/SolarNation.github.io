@@ -45,78 +45,42 @@ function createMCTileLayer(mapName, mapConfig, mapRotation) {
  * Functions to convert Minecraft x, z, y (isometric render view) <-> Leaflet latitute/longitude.
  */
 var IsometricRenderView = {
-	mcToLatLng: function(x, z, y, lmap, mapConfig, tileOffset) {
-		// the size of a 1/4 block image divided by the total size of all render tiles 
-		// on the highest zoom level
-		var block = (mapConfig.textureSize/2.0) / (mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom));
-		
-		// at first calculate the row and the column of the block:
-		// column is just x+z
-		// also don't forget the possible tile offset: one tile has 32 columns
-		var col = x+z - tileOffset[0]*32;
-		// row is z-x, and every y to bottom adds 2 rows
-		// tile offset again: one tile has 64 rows
-		var row = z-x + (256-y)*2 - tileOffset[1]*64;
-	
-		// midpoint of the map is in lat/lng 0.5|0.5
-		// we have to move the lng by the size of one tile
-		// lng is now 2*block size for every column
-		var lng = 0.5 - (1.0 / Math.pow(2, mapConfig.maxZoom + 1)) + col * 2*block;
-		// lat is now one block size for every row 
-		var lat = 0.5 + row * block;
-	
-		// now we have coordinates in the range [0; 1]
-		// we use the unproject method of leaflet to convert pixel coordinates
-		// to real lat/lng coordinates
-		// every zoom level has tileSize * 2^zoom pixels, so just multiplicate
-		// the [0; 1] coordinates with this pixel count and use the unproject method
-		var size = mapConfig.tileSize * Math.pow(2, lmap.getZoom());
-		return lmap.unproject([lng * size, lat * size]);
+	mcToLatLng: function(x, z, y, lmap, mapConfig, tileOffset, tileWidth) {
+		// all pixel units here are pixels on the highest zoom level
+		// size of the map in pixels
+		var mapSize = mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom);
+		// size of a quarter block = texture size / 2
+		var quarterBlockSize = mapConfig.textureSize / 2;
+		// each block has a row/column depending on x/z/y
+		// each row is a half block high, each column a quarter block wide
+		// row = x+z, column = z - x + (256-y)*2
+		// so we can get the correct pixel coordinates of the mc coordinates, and then lat/lng:
+		// 1. calculate row/column, multiply with row/column size (now pixel coordinates)
+		// 2. map range [-mapSize/2, mapSize/2] to [0, mapSize/2] (like unproject wants it)
+		// 3. apply little offset that is needed in this view
+		// 4. apply tile offset
+		// 5. pixel coordinates -> leaflet lat/lng with unproject
+		var point = L.point(2 * (x + z), z - x + (256 - y) * 2).multiplyBy(quarterBlockSize)
+			.add(L.point(mapSize / 2, mapSize / 2))
+			.add(L.point(-mapConfig.textureSize * 16, 0))
+			.add(L.point(-tileOffset[0], -tileOffset[1]).multiplyBy(mapConfig.tileSize));
+		return lmap.unproject(point, mapConfig.maxZoom);
 	},
 	
-	latLngToMC: function(latLng, y, lmap, mapConfig, tileOffset) {
-		// this is the equivalent of the Minecraft x,z,y to lat/lng converter
-		// have some fun with the formulas from above!
-		
-		//    tile = 1 / 2^(maxZoom + 1)
-		// 1) lng = 0.5 - tile + (x + z) * 2 * block
-		// 2) lat = 0.5 + (z - x + (256 - y) * 2) * block
-		
-		// solve 1) for x:
-		//    lng - (x + z) * 2 * block = 0.5 - tile
-		//    - (x + z) * 2 * block = 0.5 - tile - lng
-		//    -2x*block - 2z*block = 0.5 - tile - lng
-		//    -2x*block = 0.5 - tile - lng + 2z*block
-		// => x = (0.5 - tile - lng + 2z*block) / (-2*block)
-		
-		// put x from 1) into 2):
-		//    lat = 0.5 + (z - x + (256 - y) * 2) * block
-		//    lat = 0.5 + (z - ((0.5 - tile - lng + 2z*block) / (-2*block)) + (256 - y) * 2) * block
-		// lets solve for z (yes, I was too lazy and used my CAS):
-		// => z = (4y*block - 1024*block + 2*lat + lng + tile - 1.5) / (4*block)
-		
-		// same way like in the other method:
-		// we convert the lat/lng coordinates to pixel coordinates
-		// in the range [0; count of tiles * tile size]
-		var point = lmap.project(latLng);
-		// size = count of tiles on this zoom level * tile size
-		var size = mapConfig.tileSize * Math.pow(2, lmap.getZoom());
-		// then we need to convert the pixel coordinates to lat/lng coordinates
-		// in the range [0; 1] to use them for the lat/lng -> MC algorithm
-		var lat = point.y / size;
-		var lng = point.x / size;
-		// add tile offset to lat/lng coordinates,
-		// as we have now lat/lng coordinates in the range [0; 1],
-		// divide tile offset by the count of tiles on max zoom level 
-		lat += tileOffset[1] / Math.pow(2, mapConfig.maxZoom);
-		lng += tileOffset[0] / Math.pow(2, mapConfig.maxZoom);
-		
-		// convert lat/lng coordinates to Minecraft coordinates
-		var tile = (1.0 / Math.pow(2, mapConfig.maxZoom + 1));
-		var block = (mapConfig.textureSize/2.0) / (mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom));
-		
-		z = (4*y*block - 1024*block + 2*lat + lng + tile - 1.5) / (4*block);
-		x = (0.5 - tile - lng + 2*z*block) / (-2*block);
+	latLngToMC: function(latLng, y, lmap, mapConfig, tileOffset, tileWidth) {
+		var mapSize = mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom);
+		var quarterBlockSize = mapConfig.textureSize / 2;
+		// do the inverse translation from above
+		var point = lmap.project(latLng, mapConfig.maxZoom)
+			.add(L.point(tileOffset[0], tileOffset[1]).multiplyBy(mapConfig.tileSize))
+			.add(L.point(mapConfig.textureSize * 16, 0))
+			.add(L.point(-mapSize / 2, -mapSize / 2))
+		// remove block sizes from it
+		point.x /= 2*quarterBlockSize;
+		point.y /= quarterBlockSize;
+		// solve the row = ... col = ... equation system and you get this:
+		var x = 0.5 * (point.x - point.y - 2*y + 512);
+		var z = 0.5 * (point.x + point.y + 2*y - 512);
 		return [x, z, y];
 	}
 };
@@ -125,29 +89,25 @@ var IsometricRenderView = {
  * Functions to convert Minecraft x, z, y (topdown render view) <-> Leaflet latitute/longitude.
  */
 var TopdownRenderView = {
-	mcToLatLng: function(x, z, y, lmap, mapConfig, tileOffset) {
-		var block = mapConfig.textureSize / (mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom));
-		
-		var lng = 0.5 + (x - tileOffset[0]*16) * block;
-		var lat = 0.5 + (z - tileOffset[1]*16) * block;
-		
-		var size = mapConfig.tileSize * Math.pow(2, lmap.getZoom());
-		return lmap.unproject([lng * size, lat * size]);
+	mcToLatLng: function(x, z, y, lmap, mapConfig, tileOffset, tileWidth) {
+		// like the isometric render view, except we don't have to deal with the row/col hassle
+		var mapSize = mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom);
+		var blockWidth = mapConfig.tileSize / (16.0 * tileWidth);
+		var point = L.point(x, z).multiplyBy(blockWidth)
+			.add(L.point(mapSize / 2, mapSize / 2))
+			.add(L.point(-tileOffset[0], -tileOffset[1]).multiplyBy(mapConfig.tileSize));
+		return lmap.unproject(point, mapConfig.maxZoom);
 	},
 	
-	latLngToMC: function(latLng, y, lmap, mapConfig, tileOffset) {
-		var point = lmap.project(latLng);
-		var size = mapConfig.tileSize * Math.pow(2, lmap.getZoom());
-		
-		var lat = point.y / size;
-		var lng = point.x / size;
-		lat += tileOffset[1] / Math.pow(2, mapConfig.maxZoom);
-		lng += tileOffset[0] / Math.pow(2, mapConfig.maxZoom);
-
-		var block = mapConfig.textureSize / (mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom));
-		x = (lng - 0.5) / block;
-		z = (lat - 0.5) / block;
-		return [x, z, y];
+	latLngToMC: function(latLng, y, lmap, mapConfig, tileOffset, tileWidth) {
+		var mapSize = mapConfig.tileSize * Math.pow(2, mapConfig.maxZoom);
+		var blockWidth = mapConfig.tileSize / (16.0 * tileWidth);
+		// inverse transformation from above again
+		var mc = lmap.project(latLng, mapConfig.maxZoom)
+			.add(L.point(tileOffset[0], tileOffset[1]).multiplyBy(mapConfig.tileSize))
+			.add(L.point(-mapSize / 2, -mapSize / 2))
+			.divideBy(blockWidth);
+		return [mc.x, mc.y, y];
 	}
 };
 
@@ -281,7 +241,7 @@ MapcrafterUI.prototype.setMapAndRotation = function(map, rotation) {
 	var oldZoom = 0;
 	if(this.currentMap != null && this.currentRotation != null) {
 		oldMapLayer = this.layers[this.currentMap][this.currentRotation];
-		oldView = this.latLngToMC(this.lmap.getCenter(), 64);
+		oldView = this.latLngToMC(this.lmap.getCenter(), oldMapConfig.worldSeaLevel);
 		oldZoom = this.lmap.getZoom();
 	}
 	
@@ -369,14 +329,19 @@ MapcrafterUI.prototype.addControl = function(control, position, index) {
 		this.controlsNotCreated.push([control, position, index]);
 		return;
 	}
-	
+
 	var self = this;
 	var ControlType = L.Control.extend({
 		onAdd: function(map) {
 			var wrapper = document.createElement("div");
-			wrapper.setAttribute("class", "control-wrapper");
-			wrapper.setAttribute("id", "control-wrapper-" + name);
-			
+			if(control.usePanelWrapper()) {
+				wrapper.setAttribute("class", "control-wrapper control-wrapper-panel panel panel-default");
+				wrapper.setAttribute("id", "control-wrapper-" + control.getName());
+			} else {
+				wrapper.setAttribute("class", "control-wrapper control-wrapper-invisible");
+				wrapper.setAttribute("id", "control-wrapper-" + control.getName());
+			}
+
 			// just a dirty hack to prevent the map getting all mouse click events
 			wrapper.onmouseover = function() {
 				map.dragging.disable();
@@ -425,7 +390,9 @@ MapcrafterUI.prototype.addHandler = function(handler) {
  */
 MapcrafterUI.prototype.mcToLatLng = function(x, z, y) {
 	var mapConfig = this.getCurrentMapConfig();
-	var tileOffset = this.getTileSetGroupConfig(mapConfig.tileSetGroup).tileOffsets[this.currentRotation];
+	var tileSetGroup = this.getTileSetGroupConfig(mapConfig.tileSetGroup);
+	var tileOffset = tileSetGroup.tileOffsets[this.currentRotation];
+	var tileWidth = tileSetGroup.tileWidth;
 	
 	// rotate the position to the map rotation
 	for(var i = 0; i < this.currentRotation; i++) {
@@ -437,8 +404,8 @@ MapcrafterUI.prototype.mcToLatLng = function(x, z, y) {
 	
 	// do the conversion depending on the current render view
 	if (mapConfig.renderView == "isometric")
-		return IsometricRenderView.mcToLatLng(x, z, y, this.lmap, mapConfig, tileOffset);
-	return TopdownRenderView.mcToLatLng(x, z, y, this.lmap, mapConfig, tileOffset);
+		return IsometricRenderView.mcToLatLng(x, z, y, this.lmap, mapConfig, tileOffset, tileWidth);
+	return TopdownRenderView.mcToLatLng(x, z, y, this.lmap, mapConfig, tileOffset, tileWidth);
 };
 
 /**
@@ -447,14 +414,16 @@ MapcrafterUI.prototype.mcToLatLng = function(x, z, y) {
  */
 MapcrafterUI.prototype.latLngToMC = function(latLng, y) {
 	var mapConfig = this.getCurrentMapConfig();
-	var tileOffset = this.getTileSetGroupConfig(mapConfig.tileSetGroup).tileOffsets[this.currentRotation];
+	var tileSetGroup = this.getTileSetGroupConfig(mapConfig.tileSetGroup);
+	var tileOffset = tileSetGroup.tileOffsets[this.currentRotation];
+	var tileWidth = tileSetGroup.tileWidth;
 
 	// do the conversion depending on the current render view
 	var mc;
 	if (mapConfig.renderView == "isometric")
-		mc = IsometricRenderView.latLngToMC(latLng, y, this.lmap, mapConfig, tileOffset);
+		mc = IsometricRenderView.latLngToMC(latLng, y, this.lmap, mapConfig, tileOffset, tileWidth);
 	else
-		mc = TopdownRenderView.latLngToMC(latLng, y, this.lmap, mapConfig, tileOffset)
+		mc = TopdownRenderView.latLngToMC(latLng, y, this.lmap, mapConfig, tileOffset, tileWidth);
 	var x = mc[0], z = mc[1];
 	
 	// rotate the position in the other direction back from map rotation

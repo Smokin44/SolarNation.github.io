@@ -1,13 +1,18 @@
 var CONFIG = {
   "maps": {
     "Solar_Nation_1_29": {
-      "defaultZoom": 3,
+      "defaultView": [
+        2220,
+        -1750,
+        64
+      ],
+      "defaultZoom": 2,
       "imageFormat": "png",
       "lastRendered": [
-        1487011252,
-        1487011402,
-        1487011402,
-        1487011402
+        1487035455,
+        1487035455,
+        1487035455,
+        1487035455
       ],
       "maxZoom": 6,
       "name": "Jan. 29, 2017",
@@ -22,19 +27,25 @@ var CONFIG = {
       "tileSetGroup": "SolarNation_1_29_isometric_t1",
       "tileSize": 384,
       "world": "SolarNation_1_29",
-      "worldName": "SolarNation_1_29"
+      "worldName": "SolarNation_1_29",
+      "worldSeaLevel": 64
     },
     "Solar_Nation_2_13": {
-      "defaultZoom": 3,
+      "defaultView": [
+        2220,
+        -1750,
+        64
+      ],
+      "defaultZoom": 2,
       "imageFormat": "png",
       "lastRendered": [
-        1487011252,
-        1487011402,
-        1487011402,
-        1487011402
+        1487035455,
+        1487035455,
+        1487035455,
+        1487035455
       ],
       "maxZoom": 6,
-      "name": "Feb. 13, 2017",
+      "name": "Lastest - Feb. 13, 2017",
       "renderView": "isometric",
       "rotations": [
         0,
@@ -46,12 +57,13 @@ var CONFIG = {
       "tileSetGroup": "SolarNation_2_13_isometric_t1",
       "tileSize": 384,
       "world": "SolarNation_2_13",
-      "worldName": "SolarNation_2_13"
+      "worldName": "SolarNation_2_13",
+      "worldSeaLevel": 64
     }
   },
   "mapsOrder": [
-    "Solar_Nation_1_29",
-    "Solar_Nation_2_13"
+    "Solar_Nation_2_13",
+    "Solar_Nation_1_29"
   ],
   "tileSetGroups": {
     "SolarNation_1_29_isometric_t1": {
@@ -73,7 +85,8 @@ var CONFIG = {
           -106,
           4
         ]
-      ]
+      ],
+      "tileWidth": 1
     },
     "SolarNation_2_13_isometric_t1": {
       "maxZoom": 6,
@@ -94,7 +107,8 @@ var CONFIG = {
           -106,
           4
         ]
-      ]
+      ],
+      "tileWidth": 1
     }
   }
 };
